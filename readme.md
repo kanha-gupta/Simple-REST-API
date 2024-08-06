@@ -1,42 +1,26 @@
 ## Endpoints
 
-### 1. Add a New Item
+### Execute a command
 - **Method**: `POST`
 - **Endpoint**: `/api/cmd`
-- **Description**: Adds a new item to the list.
-- **Request Body**:
-  ```json
-  {
-    "name": "ItemName"
-  }
-  ```
+- **Description**: Execute command using query parameters
+
 - **Example Command**:
   ```bash
-  curl -X POST http://localhost:8080/api/cmd -H "Content-Type: application/json" -d '{"name": "Item1"}'
+  curl -X POST http://localhost:8080/api/cmd?command=ls
   ```
 
-### 2. Get All Items
-- **Method**: `GET`
-- **Endpoint**: `/api/cmd`
-- **Description**: Retrieves all items from the list.
+- **Example output**:
+- ```
+  {"output":"go.mod\nmain.go\nreadme.md\ntest.txt\n"}
+  ```
+  
 - **Example Command**:
   ```bash
-  curl -X GET http://localhost:8080/api/cmd
+  curl -X POST http://localhost:8080/api/cmd?command=cat%20test.txt
   ```
-
-### 3. Delete an Item
-- **Method**: `DELETE`
-- **Endpoint**: `/api/cmd`
-- **Description**: Deletes an item by ID.
-- **Query Parameter**: `id` (the ID of the item to delete)
-- **Example Command**:
-  ```bash
-  curl -X DELETE "http://localhost:8080/api/cmd?id=1"
+  
+- **Example output**:
   ```
-
-## Internal Details
-
-- **Language**: Go
-- **Dependencies**: None (standard library only)
-- **Concurrency**: Synchronization is handled using `sync.Mutex`
-- **Data Storage**: In-memory storage using a map
+  {"output":"This is a test file\n"}
+  ```

